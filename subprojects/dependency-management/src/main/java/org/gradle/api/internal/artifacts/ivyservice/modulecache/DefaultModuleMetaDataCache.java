@@ -24,6 +24,7 @@ import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.ModuleComponentRe
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusions;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.ComponentIdentifierSerializer;
 import org.gradle.cache.PersistentIndexedCache;
+import org.gradle.internal.Factory;
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata;
 import org.gradle.internal.component.external.model.MutableModuleComponentResolveMetadata;
 import org.gradle.internal.hash.HashValue;
@@ -63,38 +64,54 @@ public class DefaultModuleMetaDataCache implements ModuleMetaDataCache {
         return cacheLockingManager.createCache("module-metadata", new RevisionKeySerializer(), new ModuleMetadataCacheEntrySerializer());
     }
 
-    public CachedMetaData getCachedModuleDescriptor(ModuleComponentRepository repository, ModuleComponentIdentifier componentId) {
-        ModuleComponentAtRepositoryKey key = createKey(repository, componentId);
-        ModuleMetadataCacheEntry entry = getCache().get(key);
-        if (entry == null) {
-            return null;
-        }
-        if (entry.isMissing()) {
-            return new DefaultCachedMetaData(entry, null, timeProvider);
-        }
-        MutableModuleComponentResolveMetadata metadata = moduleMetadataStore.getModuleDescriptor(key);
-        if (metadata == null) {
-            // Descriptor file has been deleted - ignore the entry
-            getCache().remove(key);
-            return null;
-        }
-        return new DefaultCachedMetaData(entry, entry.configure(metadata), timeProvider);
+    public CachedMetaData getCachedModuleDescriptor(final ModuleComponentRepository repository, final ModuleComponentIdentifier componentId) {
+        return cacheLockingManager.useCache(new Factory<CachedMetaData>() {
+            @Override
+            public CachedMetaData create() {
+                ModuleComponentAtRepositoryKey key = createKey(repository, componentId);
+                ModuleMetadataCacheEntry entry = getCache().get(key);
+                if (entry == null) {
+                    return null;
+                }
+                if (entry.isMissing()) {
+                    return new DefaultCachedMetaData(entry, null, timeProvider);
+                }
+                MutableModuleComponentResolveMetadata metadata = moduleMetadataStore.getModuleDescriptor(key);
+                if (metadata == null) {
+                    // Descriptor file has been deleted - ignore the entry
+                    getCache().remove(key);
+                    return null;
+                }
+                return new DefaultCachedMetaData(entry, entry.configure(metadata), timeProvider);
+            }
+        });
     }
 
-    public CachedMetaData cacheMissing(ModuleComponentRepository repository, ModuleComponentIdentifier id) {
-        LOGGER.debug("Recording absence of module descriptor in cache: {} [changing = {}]", id, false);
-        ModuleMetadataCacheEntry entry = ModuleMetadataCacheEntry.forMissingModule(timeProvider.getCurrentTime());
-        getCache().put(createKey(repository, id), entry);
-        return new DefaultCachedMetaData(entry, null, timeProvider);
+    public CachedMetaData cacheMissing(final ModuleComponentRepository repository, final ModuleComponentIdentifier id) {
+        return cacheLockingManager.useCache(new Factory<CachedMetaData>() {
+            @Override
+            public CachedMetaData create() {
+
+                LOGGER.debug("Recording absence of module descriptor in cache: {} [changing = {}]", id, false);
+                ModuleMetadataCacheEntry entry = ModuleMetadataCacheEntry.forMissingModule(timeProvider.getCurrentTime());
+                getCache().put(createKey(repository, id), entry);
+                return new DefaultCachedMetaData(entry, null, timeProvider);
+            }
+        });
     }
 
-    public CachedMetaData cacheMetaData(ModuleComponentRepository repository, ModuleComponentResolveMetadata metadata) {
-        LOGGER.debug("Recording module descriptor in cache: {} [changing = {}]", metadata.getComponentId(), metadata.isChanging());
-        ModuleComponentAtRepositoryKey key = createKey(repository, metadata.getComponentId());
-        LocallyAvailableResource resource = moduleMetadataStore.putModuleDescriptor(key, metadata);
-        ModuleMetadataCacheEntry entry = createEntry(metadata, resource.getSha1());
-        getCache().put(key, entry);
-        return new DefaultCachedMetaData(entry, null, timeProvider);
+    public CachedMetaData cacheMetaData(final ModuleComponentRepository repository, final ModuleComponentResolveMetadata metadata) {
+        return cacheLockingManager.useCache(new Factory<CachedMetaData>() {
+            @Override
+            public CachedMetaData create() {
+                LOGGER.debug("Recording module descriptor in cache: {} [changing = {}]", metadata.getComponentId(), metadata.isChanging());
+                ModuleComponentAtRepositoryKey key = createKey(repository, metadata.getComponentId());
+                LocallyAvailableResource resource = moduleMetadataStore.putModuleDescriptor(key, metadata);
+                ModuleMetadataCacheEntry entry = createEntry(metadata, resource.getSha1());
+                getCache().put(key, entry);
+                return new DefaultCachedMetaData(entry, null, timeProvider);
+            }
+        });
     }
 
     private ModuleComponentAtRepositoryKey createKey(ModuleComponentRepository repository, ModuleComponentIdentifier id) {

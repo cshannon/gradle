@@ -47,6 +47,8 @@ import org.gradle.api.internal.artifacts.repositories.ResolutionAwareRepository;
 import org.gradle.api.internal.attributes.ImmutableAttributesFactory;
 import org.gradle.api.specs.Spec;
 import org.gradle.internal.component.model.DependencyMetadata;
+import org.gradle.internal.operations.BuildOperationProcessor;
+import org.gradle.internal.operations.BuildOperationWorkerRegistry;
 import org.gradle.internal.progress.BuildOperationExecutor;
 import org.gradle.internal.resolve.resolver.ArtifactResolver;
 import org.gradle.internal.resolve.resolver.ComponentMetaDataResolver;
@@ -67,15 +69,23 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
     private final CacheLockingManager cacheLockingManager;
     private final VersionComparator versionComparator;
     private final ImmutableAttributesFactory attributesFactory;
+    private final BuildOperationProcessor buildOperationProcessor;
+    private final BuildOperationWorkerRegistry buildOperationWorkerRegistry;
+    private final BuildOperationExecutor buildOperationExecutor;
 
     public DefaultArtifactDependencyResolver(ServiceRegistry serviceRegistry, ResolveIvyFactory ivyFactory, DependencyDescriptorFactory dependencyDescriptorFactory,
-                                             CacheLockingManager cacheLockingManager, VersionComparator versionComparator, ImmutableAttributesFactory attributesFactory) {
+                                             CacheLockingManager cacheLockingManager, VersionComparator versionComparator, ImmutableAttributesFactory attributesFactory,
+                                             BuildOperationProcessor buildOperationProcessor, BuildOperationWorkerRegistry buildOperationWorkerRegistry,
+                                             BuildOperationExecutor buildOperationExecutor) {
         this.serviceRegistry = serviceRegistry;
         this.ivyFactory = ivyFactory;
         this.dependencyDescriptorFactory = dependencyDescriptorFactory;
         this.cacheLockingManager = cacheLockingManager;
         this.versionComparator = versionComparator;
         this.attributesFactory = attributesFactory;
+        this.buildOperationProcessor = buildOperationProcessor;
+        this.buildOperationWorkerRegistry = buildOperationWorkerRegistry;
+        this.buildOperationExecutor = buildOperationExecutor;
     }
 
     @Override
@@ -100,7 +110,7 @@ public class DefaultArtifactDependencyResolver implements ArtifactDependencyReso
         ResolveContextToComponentResolver requestResolver = createResolveContextConverter();
         ConflictHandler conflictHandler = createConflictHandler(resolutionStrategy, globalRules);
 
-        return new DependencyGraphBuilder(componentIdResolver, componentMetaDataResolver, requestResolver, conflictHandler, edgeFilter, attributesSchema, moduleIdentifierFactory, moduleExclusions);
+        return new DependencyGraphBuilder(componentIdResolver, componentMetaDataResolver, requestResolver, conflictHandler, edgeFilter, attributesSchema, moduleIdentifierFactory, moduleExclusions, cacheLockingManager, buildOperationProcessor, buildOperationWorkerRegistry, buildOperationExecutor);
     }
 
     private ComponentResolversChain createResolvers(ResolveContext resolveContext, List<? extends ResolutionAwareRepository> repositories, GlobalDependencyResolutionRules metadataHandler) {

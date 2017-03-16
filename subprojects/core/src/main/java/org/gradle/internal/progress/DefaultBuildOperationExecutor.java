@@ -46,7 +46,7 @@ public class DefaultBuildOperationExecutor implements BuildOperationExecutor {
     public Operation getCurrentOperation() {
         OperationDetails current = currentOperation.get();
         if (current == null) {
-            throw new IllegalStateException("No operation is currently running.");
+            //throw new IllegalStateException("No operation is currently running.");
         }
         return current;
     }

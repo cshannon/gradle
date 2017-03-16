@@ -84,6 +84,8 @@ import org.gradle.initialization.ProjectAccessListener;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactMetadata;
 import org.gradle.internal.installation.CurrentGradleInstallation;
 import org.gradle.internal.logging.progress.ProgressLoggerFactory;
+import org.gradle.internal.operations.BuildOperationProcessor;
+import org.gradle.internal.operations.BuildOperationWorkerRegistry;
 import org.gradle.internal.progress.BuildOperationExecutor;
 import org.gradle.internal.reflect.Instantiator;
 import org.gradle.internal.resource.cached.ByUrlCachedExternalResourceIndex;
@@ -273,14 +275,20 @@ class DependencyManagementBuildScopeServices {
                                                                 CacheLockingManager cacheLockingManager,
                                                                 VersionComparator versionComparator,
                                                                 ServiceRegistry serviceRegistry,
-                                                                ImmutableAttributesFactory cache) {
+                                                                ImmutableAttributesFactory cache,
+                                                                BuildOperationProcessor buildOperationProcessor,
+                                                                BuildOperationWorkerRegistry buildOperationWorkerRegistry,
+                                                                BuildOperationExecutor buildOperationExecutor) {
         ArtifactDependencyResolver resolver = new DefaultArtifactDependencyResolver(
             serviceRegistry,
             resolveIvyFactory,
             dependencyDescriptorFactory,
             cacheLockingManager,
             versionComparator,
-            cache
+            cache,
+            buildOperationProcessor,
+            buildOperationWorkerRegistry,
+            buildOperationExecutor
         );
         return new CacheLockingArtifactDependencyResolver(cacheLockingManager, resolver);
     }

@@ -15,6 +15,7 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph;
 
+import com.google.common.collect.Maps;
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.ModuleDependency;
 import org.gradle.api.artifacts.ModuleIdentifier;
@@ -27,6 +28,7 @@ import org.gradle.api.attributes.AttributesSchema;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
 import org.gradle.api.internal.artifacts.ResolveContext;
 import org.gradle.api.internal.artifacts.ResolvedConfigurationIdentifier;
+import org.gradle.api.internal.artifacts.ivyservice.CacheLockingManager;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.ComponentResolutionState;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.ModuleConflictResolver;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.excludes.ModuleExclusion;
@@ -37,6 +39,9 @@ import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflict
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.graph.conflicts.PotentialConflict;
 import org.gradle.api.internal.artifacts.ivyservice.resolveengine.result.VersionSelectionReasons;
 import org.gradle.api.specs.Spec;
+import org.gradle.cache.internal.DefaultProducerGuard;
+import org.gradle.cache.internal.ProducerGuard;
+import org.gradle.internal.Factory;
 import org.gradle.internal.component.local.model.DslOriginDependencyMetadata;
 import org.gradle.internal.component.model.ComponentArtifactMetadata;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
@@ -46,6 +51,11 @@ import org.gradle.internal.component.model.DependencyMetadata;
 import org.gradle.internal.component.model.Exclude;
 import org.gradle.internal.id.IdGenerator;
 import org.gradle.internal.id.LongIdGenerator;
+import org.gradle.internal.operations.BuildOperationProcessor;
+import org.gradle.internal.operations.BuildOperationQueue;
+import org.gradle.internal.operations.BuildOperationWorkerRegistry;
+import org.gradle.internal.operations.RunnableBuildOperation;
+import org.gradle.internal.progress.BuildOperationExecutor;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
 import org.gradle.internal.resolve.resolver.ComponentMetaDataResolver;
 import org.gradle.internal.resolve.resolver.DependencyToComponentIdResolver;
@@ -60,6 +70,7 @@ import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -78,11 +89,18 @@ public class DependencyGraphBuilder {
     private final AttributesSchema attributesSchema;
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
     private final ModuleExclusions moduleExclusions;
+    private final CacheLockingManager cacheLockingManager;
+    private final BuildOperationProcessor buildOperationProcessor;
+    private final BuildOperationWorkerRegistry buildOperationWorkerRegistry;
+    private final BuildOperationExecutor buildOperationExecutor;
 
     public DependencyGraphBuilder(DependencyToComponentIdResolver componentIdResolver, ComponentMetaDataResolver componentMetaDataResolver,
                                   ResolveContextToComponentResolver resolveContextToComponentResolver,
                                   ConflictHandler conflictHandler, Spec<? super DependencyMetadata> edgeFilter, AttributesSchema attributesSchema,
-                                  ImmutableModuleIdentifierFactory moduleIdentifierFactory, ModuleExclusions moduleExclusions) {
+                                  ImmutableModuleIdentifierFactory moduleIdentifierFactory, ModuleExclusions moduleExclusions,
+                                  CacheLockingManager cacheLockingManager, BuildOperationProcessor buildOperationProcessor,
+                                  BuildOperationWorkerRegistry buildOperationWorkerRegistry,
+                                  BuildOperationExecutor buildOperationExecutor) {
         this.idResolver = componentIdResolver;
         this.metaDataResolver = componentMetaDataResolver;
         this.moduleResolver = resolveContextToComponentResolver;
@@ -91,29 +109,45 @@ public class DependencyGraphBuilder {
         this.attributesSchema = attributesSchema;
         this.moduleIdentifierFactory = moduleIdentifierFactory;
         this.moduleExclusions = moduleExclusions;
+        this.cacheLockingManager = cacheLockingManager;
+        this.buildOperationProcessor = buildOperationProcessor;
+        this.buildOperationWorkerRegistry = buildOperationWorkerRegistry;
+        this.buildOperationExecutor = buildOperationExecutor;
     }
 
-    public void resolve(ResolveContext resolveContext, DependencyGraphVisitor modelVisitor) {
+    public void resolve(final ResolveContext resolveContext, final DependencyGraphVisitor modelVisitor) {
+
         IdGenerator<Long> idGenerator = new LongIdGenerator();
         DefaultBuildableComponentResolveResult rootModule = new DefaultBuildableComponentResolveResult();
         moduleResolver.resolve(resolveContext, rootModule);
 
-        ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleIdentifierFactory, moduleExclusions);
+        final ResolveState resolveState = new ResolveState(idGenerator, rootModule, resolveContext.getName(), idResolver, metaDataResolver, edgeFilter, attributesSchema, moduleIdentifierFactory, moduleExclusions);
         conflictHandler.registerResolver(new DirectDependencyForcingResolver(resolveState.root.moduleRevision));
+        cacheLockingManager.longRunningOperation(new Runnable() {
+            @Override
+            public void run() {
+                traverseGraph(resolveState, conflictHandler);
+            }
+        });
 
-        traverseGraph(resolveState, conflictHandler);
         resolveState.root.moduleRevision.setSelectionReason(VersionSelectionReasons.ROOT);
 
         assembleResult(resolveState, modelVisitor);
+
     }
 
     /**
      * Traverses the dependency graph, resolving conflicts and building the paths from the root configuration.
      */
     private void traverseGraph(final ResolveState resolveState, final ConflictHandler conflictHandler) {
+        final ProducerGuard<DependencyGraphSelector> guard = new DefaultProducerGuard<DependencyGraphSelector>();
         resolveState.onMoreSelected(resolveState.root);
 
-        List<DependencyEdge> dependencies = new ArrayList<DependencyEdge>();
+        final List<DependencyEdge> dependencies = new ArrayList<DependencyEdge>();
+        final Map<DependencyEdge, ModuleVersionResolveState> resolvedModules = Collections.synchronizedMap(
+            Maps.<DependencyEdge, ModuleVersionResolveState>newLinkedHashMap()
+        );
+
         while (resolveState.peek() != null || conflictHandler.hasConflicts()) {
             if (resolveState.peek() != null) {
                 ConfigurationNode node = resolveState.pop();
@@ -121,52 +155,63 @@ public class DependencyGraphBuilder {
 
                 // Calculate the outgoing edges of this configuration
                 dependencies.clear();
+                resolvedModules.clear();
+
                 node.visitOutgoingDependencies(dependencies);
 
-                for (DependencyEdge dependency : dependencies) {
-                    LOGGER.debug("Visiting dependency {}", dependency);
+                asyncResolveEdge(node, dependencies, resolvedModules, guard);
 
+                for (Map.Entry<DependencyEdge, ModuleVersionResolveState> resolvedModule : resolvedModules.entrySet()) {
                     // Resolve dependency to a particular revision
-                    ModuleVersionResolveState moduleRevision = dependency.resolveModuleRevisionId();
+                    DependencyEdge dependency = resolvedModule.getKey();
+                    ModuleVersionResolveState moduleRevision = resolvedModule.getValue();
+
                     if (moduleRevision == null) {
                         // Failed to resolve.
                         continue;
                     }
-                    ModuleIdentifier moduleId = moduleRevision.id.getModule();
+                    final ModuleVersionResolveState finalModuleRevision = moduleRevision;
+                    final DependencyEdge finalDependency = dependency;
 
-                    // Check for a new conflict
-                    if (moduleRevision.state == ModuleState.New) {
-                        ModuleResolveState module = resolveState.getModule(moduleId);
+                    synchronized (finalModuleRevision) {
+                        ModuleIdentifier moduleId = finalModuleRevision.id.getModule();
 
-                        // A new module revision. Check for conflict
-                        PotentialConflict c = conflictHandler.registerModule(module);
-                        if (!c.conflictExists()) {
-                            // No conflict. Select it for now
-                            LOGGER.debug("Selecting new module version {}", moduleRevision);
-                            module.select(moduleRevision);
-                        } else {
-                            // We have a conflict
-                            LOGGER.debug("Found new conflicting module version {}", moduleRevision);
+                        // Check for a new conflict
+                        if (finalModuleRevision.state == ModuleState.New) {
+                            ModuleResolveState module = resolveState.getModule(moduleId);
 
-                            // Deselect the currently selected version, and remove all outgoing edges from the version
-                            // This will propagate through the graph and prune configurations that are no longer required
-                            // For each module participating in the conflict (many times there is only one participating module that has multiple versions)
-                            c.withParticipatingModules(new Action<ModuleIdentifier>() {
-                                public void execute(ModuleIdentifier module) {
-                                    ModuleVersionResolveState previouslySelected = resolveState.getModule(module).clearSelection();
-                                    if (previouslySelected != null) {
-                                        for (ConfigurationNode configuration : previouslySelected.configurations) {
-                                            configuration.deselect();
+                            // A new module revision. Check for conflict
+                            PotentialConflict c = conflictHandler.registerModule(module);
+                            if (!c.conflictExists()) {
+                                // No conflict. Select it for now
+                                LOGGER.debug("Selecting new module version {}", finalModuleRevision);
+                                module.select(finalModuleRevision);
+                            } else {
+                                // We have a conflict
+                                LOGGER.debug("Found new conflicting module version {}", finalModuleRevision);
+
+                                // Deselect the currently selected version, and remove all outgoing edges from the version
+                                // This will propagate through the graph and prune configurations that are no longer required
+                                // For each module participating in the conflict (many times there is only one participating module that has multiple versions)
+                                c.withParticipatingModules(new Action<ModuleIdentifier>() {
+                                    public void execute(ModuleIdentifier module) {
+                                        ModuleVersionResolveState previouslySelected = resolveState.getModule(module).clearSelection();
+                                        if (previouslySelected != null) {
+                                            for (ConfigurationNode configuration : previouslySelected.configurations) {
+                                                configuration.deselect();
+                                            }
                                         }
                                     }
-                                }
-                            });
+                                });
+                            }
                         }
+
+                        finalDependency.attachToTargetConfigurations();
                     }
 
-                    dependency.attachToTargetConfigurations();
                 }
             } else {
+
                 // We have some batched up conflicts. Resolve the first, and continue traversing the graph
                 conflictHandler.resolveNextConflict(new Action<ConflictResolutionResult>() {
                     public void execute(final ConflictResolutionResult result) {
@@ -181,7 +226,42 @@ public class DependencyGraphBuilder {
                     }
                 });
             }
+
         }
+    }
+
+    protected void asyncResolveEdge(final ConfigurationNode node, final List<DependencyEdge> dependencies, final Map<DependencyEdge, ModuleVersionResolveState> resolvedModules, final ProducerGuard<DependencyGraphSelector> guard) {
+        if (dependencies.isEmpty()) {
+            return;
+        }
+        LOGGER.info("Submitting {} dependency edges to resolve in parallel for {}", dependencies.size(), node);
+        buildOperationProcessor.run(new Action<BuildOperationQueue<RunnableBuildOperation>>() {
+            @Override
+            public void execute(BuildOperationQueue<RunnableBuildOperation> buildOperationQueue) {
+                for (final DependencyEdge dependency : dependencies) {
+                    // make sure dependencies will be listed in the same order as with serial resolution
+                    resolvedModules.put(dependency, null);
+                    buildOperationQueue.add(new RunnableBuildOperation() {
+                        @Override
+                        public void run() {
+
+                            resolvedModules.put(dependency, guard.guardByKey(dependency.getSelector(), new Factory<ModuleVersionResolveState>() {
+                                @Override
+                                public ModuleVersionResolveState create() {
+                                    LOGGER.info("Resolving {} in {}", dependency.getSelector(), Thread.currentThread());
+                                    return dependency.resolveModuleRevisionId();
+                                }
+                            }));
+                        }
+
+                        @Override
+                        public String getDescription() {
+                            return "Resolving " + node.toString();
+                        }
+                    });
+                }
+            }
+        });
     }
 
     /**
@@ -431,7 +511,7 @@ public class DependencyGraphBuilder {
             return selectors.values();
         }
 
-        public ModuleVersionSelectorResolveState getSelector(DependencyMetadata dependencyMetadata) {
+        public synchronized ModuleVersionSelectorResolveState getSelector(DependencyMetadata dependencyMetadata) {
             ModuleVersionSelector requested = dependencyMetadata.getRequested();
             ModuleVersionSelectorResolveState resolveState = selectors.get(requested);
             if (resolveState == null) {

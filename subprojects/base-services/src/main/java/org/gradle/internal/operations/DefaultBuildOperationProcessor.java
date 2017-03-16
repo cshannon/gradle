@@ -21,6 +21,7 @@ import org.apache.commons.lang.StringUtils;
 import org.gradle.api.Action;
 import org.gradle.api.GradleException;
 import org.gradle.api.Transformer;
+import org.gradle.internal.Cast;
 import org.gradle.internal.SystemProperties;
 import org.gradle.internal.concurrent.ExecutorFactory;
 import org.gradle.internal.concurrent.Stoppable;
@@ -35,6 +36,17 @@ import java.util.List;
  */
 public class DefaultBuildOperationProcessor implements BuildOperationProcessor, Stoppable {
     private static final String LINE_SEPARATOR = SystemProperties.getInstance().getLineSeparator();
+    private static final BuildOperationWorker<RunnableBuildOperation> DEFAULT_WORKER = new BuildOperationWorker<RunnableBuildOperation>() {
+        @Override
+        public String getDisplayName() {
+            return "runnable worker";
+        }
+
+        @Override
+        public void execute(RunnableBuildOperation t) {
+            t.run();
+        }
+    };
 
     private final BuildOperationWorkerRegistry buildOperationWorkerRegistry;
     private final BuildOperationQueueFactory buildOperationQueueFactory;
@@ -82,18 +94,12 @@ public class DefaultBuildOperationProcessor implements BuildOperationProcessor, 
 
     @Override
     public <T extends RunnableBuildOperation> void run(final Action<BuildOperationQueue<T>> generator) {
-        BuildOperationWorker<T> runnableWorker = new BuildOperationWorker<T>() {
-            @Override
-            public String getDisplayName() {
-                return "runnable worker";
-            }
-
-            @Override
-            public void execute(T t) {
-                t.run();
-            }
-        };
+        BuildOperationWorker<T> runnableWorker = defaultWorker();
         run(runnableWorker, generator);
+    }
+
+    protected <T extends RunnableBuildOperation> BuildOperationWorker<T> defaultWorker() {
+        return Cast.uncheckedCast(DEFAULT_WORKER);
     }
 
     public void stop() {
