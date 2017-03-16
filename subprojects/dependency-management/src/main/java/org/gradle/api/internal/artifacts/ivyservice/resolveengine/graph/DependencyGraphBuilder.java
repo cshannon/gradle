@@ -170,44 +170,8 @@ public class DependencyGraphBuilder {
                         // Failed to resolve.
                         continue;
                     }
-                    final ModuleVersionResolveState finalModuleRevision = moduleRevision;
-                    final DependencyEdge finalDependency = dependency;
 
-                    synchronized (finalModuleRevision) {
-                        ModuleIdentifier moduleId = finalModuleRevision.id.getModule();
-
-                        // Check for a new conflict
-                        if (finalModuleRevision.state == ModuleState.New) {
-                            ModuleResolveState module = resolveState.getModule(moduleId);
-
-                            // A new module revision. Check for conflict
-                            PotentialConflict c = conflictHandler.registerModule(module);
-                            if (!c.conflictExists()) {
-                                // No conflict. Select it for now
-                                LOGGER.debug("Selecting new module version {}", finalModuleRevision);
-                                module.select(finalModuleRevision);
-                            } else {
-                                // We have a conflict
-                                LOGGER.debug("Found new conflicting module version {}", finalModuleRevision);
-
-                                // Deselect the currently selected version, and remove all outgoing edges from the version
-                                // This will propagate through the graph and prune configurations that are no longer required
-                                // For each module participating in the conflict (many times there is only one participating module that has multiple versions)
-                                c.withParticipatingModules(new Action<ModuleIdentifier>() {
-                                    public void execute(ModuleIdentifier module) {
-                                        ModuleVersionResolveState previouslySelected = resolveState.getModule(module).clearSelection();
-                                        if (previouslySelected != null) {
-                                            for (ConfigurationNode configuration : previouslySelected.configurations) {
-                                                configuration.deselect();
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-                        }
-
-                        finalDependency.attachToTargetConfigurations();
-                    }
+                    performSelection(resolveState, conflictHandler, moduleRevision, dependency);
 
                 }
             } else {
@@ -230,11 +194,49 @@ public class DependencyGraphBuilder {
         }
     }
 
+    private void performSelection(final ResolveState resolveState, ConflictHandler conflictHandler, ModuleVersionResolveState finalModuleRevision, DependencyEdge finalDependency) {
+        synchronized (finalModuleRevision) {
+            ModuleIdentifier moduleId = finalModuleRevision.id.getModule();
+
+            // Check for a new conflict
+            if (finalModuleRevision.state == ModuleState.New) {
+                ModuleResolveState module = resolveState.getModule(moduleId);
+
+                // A new module revision. Check for conflict
+                PotentialConflict c = conflictHandler.registerModule(module);
+                if (!c.conflictExists()) {
+                    // No conflict. Select it for now
+                    LOGGER.debug("Selecting new module version {}", finalModuleRevision);
+                    module.select(finalModuleRevision);
+                } else {
+                    // We have a conflict
+                    LOGGER.debug("Found new conflicting module version {}", finalModuleRevision);
+
+                    // Deselect the currently selected version, and remove all outgoing edges from the version
+                    // This will propagate through the graph and prune configurations that are no longer required
+                    // For each module participating in the conflict (many times there is only one participating module that has multiple versions)
+                    c.withParticipatingModules(new Action<ModuleIdentifier>() {
+                        public void execute(ModuleIdentifier module) {
+                            ModuleVersionResolveState previouslySelected = resolveState.getModule(module).clearSelection();
+                            if (previouslySelected != null) {
+                                for (ConfigurationNode configuration : previouslySelected.configurations) {
+                                    configuration.deselect();
+                                }
+                            }
+                        }
+                    });
+                }
+            }
+
+            finalDependency.attachToTargetConfigurations();
+        }
+    }
+
     protected void asyncResolveEdge(final ConfigurationNode node, final List<DependencyEdge> dependencies, final Map<DependencyEdge, ModuleVersionResolveState> resolvedModules, final ProducerGuard<DependencyGraphSelector> guard) {
         if (dependencies.isEmpty()) {
             return;
         }
-        LOGGER.info("Submitting {} dependency edges to resolve in parallel for {}", dependencies.size(), node);
+        LOGGER.debug("Submitting {} dependency edges to resolve in parallel for {}", dependencies.size(), node);
         buildOperationProcessor.run(new Action<BuildOperationQueue<RunnableBuildOperation>>() {
             @Override
             public void execute(BuildOperationQueue<RunnableBuildOperation> buildOperationQueue) {
@@ -248,7 +250,6 @@ public class DependencyGraphBuilder {
                             resolvedModules.put(dependency, guard.guardByKey(dependency.getSelector(), new Factory<ModuleVersionResolveState>() {
                                 @Override
                                 public ModuleVersionResolveState create() {
-                                    LOGGER.info("Resolving {} in {}", dependency.getSelector(), Thread.currentThread());
                                     return dependency.resolveModuleRevisionId();
                                 }
                             }));
@@ -256,7 +257,7 @@ public class DependencyGraphBuilder {
 
                         @Override
                         public String getDescription() {
-                            return "Resolving " + node.toString();
+                            return "Resolving " + dependency.toString();
                         }
                     });
                 }
