@@ -645,8 +645,17 @@ public class DefaultProject extends AbstractPluginAware implements ProjectIntern
 
     @Override
     public DefaultProject evaluate() {
+        doExtraWork();
         getProjectEvaluator().evaluate(this, state);
         return this;
+    }
+
+    private void doExtraWork() {
+        try {
+            Thread.sleep(1);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
     @Override
