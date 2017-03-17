@@ -33,21 +33,21 @@ class TaskSelectionIntegrationTest extends AbstractIntegrationSpec {
         run "thing"
 
         then:
-        result.assertTasksExecuted(":a:thing", ":b:thing", ":a:a:thing", ":b:b:thing")
+        executed(":a:thing", ":b:thing", ":a:a:thing", ":b:b:thing")
 
         when:
         executer.inDirectory(file("a"))
         run "thing"
 
         then:
-        result.assertTasksExecuted(":a:thing", ":a:a:thing")
+        executed(":a:thing", ":a:a:thing")
 
         // camel case matching
         when:
         run "th"
 
         then:
-        result.assertTasksExecuted(":a:thing", ":b:thing", ":a:a:thing", ":b:b:thing")
+        executed(":a:thing", ":b:thing", ":a:a:thing", ":b:b:thing")
     }
 
     def "stops traversing sub-projects when task implies sub-projects"() {
@@ -67,21 +67,21 @@ class TaskSelectionIntegrationTest extends AbstractIntegrationSpec {
         run "thing"
 
         then:
-        result.assertTasksExecuted(":a:thing", ":b:thing", ":b:b:thing")
+        executed(":a:thing", ":b:thing", ":b:b:thing")
 
         when:
         executer.inDirectory(file("a"))
         run "thing"
 
         then:
-        result.assertTasksExecuted(":a:thing")
+        executed(":a:thing")
 
         // camel case matching
         when:
         run "th"
 
         then:
-        result.assertTasksExecuted(":a:thing", ":b:thing", ":b:b:thing")
+        executed(":a:thing", ":b:thing", ":b:b:thing")
     }
 
     def "can use camel-case for all segments of qualified task name"() {
@@ -94,7 +94,7 @@ allprojects { task thing }
         run "chi:chi:th"
 
         then:
-        result.assertTasksExecuted(":child:child:thing")
+        executed(":child:child:thing")
     }
 
     def "executes project default tasks when none specified"() {
@@ -112,6 +112,6 @@ allprojects { task thing }
         run()
 
         then:
-        result.assertTasksExecuted(":a", ":b", ":a:b")
+        executed(":a", ":b", ":a:b")
     }
 }
