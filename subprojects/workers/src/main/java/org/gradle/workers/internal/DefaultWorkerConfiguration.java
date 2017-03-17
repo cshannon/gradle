@@ -23,16 +23,17 @@ import org.gradle.process.JavaForkOptions;
 import org.gradle.process.internal.DefaultJavaForkOptions;
 import org.gradle.util.GUtil;
 import org.gradle.workers.ForkMode;
-import org.gradle.workers.WorkerConfiguration;
 
 import java.io.File;
 import java.io.Serializable;
 import java.util.List;
 
-public class DefaultWorkerConfiguration implements WorkerConfiguration {
+public class DefaultWorkerConfiguration implements WorkerConfigurationInternal {
     private final JavaForkOptions forkOptions;
     private ForkMode forkMode = ForkMode.AUTO;
     private List<File> classpath = Lists.newArrayList();
+    private List<String> sharedPackages = Lists.newArrayList();
+    private boolean scriptClasspath;
     private Serializable[] params = new Serializable[]{};
     private String displayName;
 
@@ -93,5 +94,30 @@ public class DefaultWorkerConfiguration implements WorkerConfiguration {
     @Override
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    @Override
+    public Iterable<String> getSharedPackages() {
+        return sharedPackages;
+    }
+
+    @Override
+    public void setSharedPackages(Iterable<String> sharedPackages) {
+        this.sharedPackages = Lists.newArrayList(sharedPackages);
+    }
+
+    @Override
+    public void sharedPackages(Iterable<String> sharedPackages) {
+        GUtil.addToCollection(this.sharedPackages, sharedPackages);
+    }
+
+    @Override
+    public boolean isStrictClasspath() {
+        return scriptClasspath;
+    }
+
+    @Override
+    public void setStrictClasspath(boolean strictClasspath) {
+        this.scriptClasspath = strictClasspath;
     }
 }

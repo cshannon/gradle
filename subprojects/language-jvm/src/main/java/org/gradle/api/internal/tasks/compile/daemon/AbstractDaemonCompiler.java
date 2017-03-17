@@ -15,80 +15,83 @@
  */
 package org.gradle.api.internal.tasks.compile.daemon;
 
+import com.google.common.annotations.VisibleForTesting;
+import org.gradle.api.Action;
 import org.gradle.api.tasks.WorkResult;
 import org.gradle.internal.UncheckedException;
 import org.gradle.language.base.internal.compile.CompileSpec;
 import org.gradle.language.base.internal.compile.Compiler;
+import org.gradle.process.JavaForkOptions;
+import org.gradle.workers.ForkMode;
+import org.gradle.workers.WorkerConfiguration;
+import org.gradle.workers.WorkerExecutor;
 import org.gradle.workers.internal.DaemonForkOptions;
-import org.gradle.workers.internal.WorkSpec;
-import org.gradle.workers.internal.WorkerAction;
 import org.gradle.workers.internal.DefaultWorkResult;
-import org.gradle.workers.internal.Worker;
-import org.gradle.workers.internal.WorkerDaemonServer;
-import org.gradle.workers.internal.WorkerFactory;
+import org.gradle.workers.internal.WorkerConfigurationInternal;
 
-import java.io.File;
+import java.io.Serializable;
 
 public abstract class AbstractDaemonCompiler<T extends CompileSpec> implements Compiler<T> {
     private final Compiler<T> delegate;
-    private final WorkerFactory workerFactory;
-    private final File daemonWorkingDir;
+    private final WorkerExecutor workerExecutor;
 
-    public AbstractDaemonCompiler(File daemonWorkingDir, Compiler<T> delegate, WorkerFactory workerFactory) {
-        this.daemonWorkingDir = daemonWorkingDir;
+    public AbstractDaemonCompiler(Compiler<T> delegate, WorkerExecutor workerExecutor) {
         this.delegate = delegate;
-        this.workerFactory = workerFactory;
-    }
-
-    public Compiler<T> getDelegate() {
-        return delegate;
-    }
-
-    @Override
-    public WorkResult execute(T spec) {
-        DaemonForkOptions daemonForkOptions = toDaemonOptions(spec);
-        Worker worker = workerFactory.getWorker(CompilerDaemonServer.class, daemonWorkingDir, daemonForkOptions);
-        DefaultWorkResult result = worker.execute(adapter(delegate), spec);
-        if (result.isSuccess()) {
-            return result;
-        }
-        throw UncheckedException.throwAsUncheckedException(result.getException());
-    }
-
-    private CompilerWorkerAdapter<T> adapter(Compiler<T> compiler) {
-        return new CompilerWorkerAdapter<T>(compiler);
+        this.workerExecutor = workerExecutor;
     }
 
     protected abstract DaemonForkOptions toDaemonOptions(T spec);
 
-    private static class CompilerWorkerAdapter<T extends CompileSpec> implements WorkerAction<T> {
-        private final Compiler<T> compiler;
+    protected ForkMode getForkMode() {
+        return ForkMode.ALWAYS;
+    }
 
-        CompilerWorkerAdapter(Compiler<T> compiler) {
-            this.compiler = compiler;
-        }
-
-        @Override
-        public DefaultWorkResult execute(T spec) {
-            return new DefaultWorkResult(compiler.execute(spec).getDidWork(), null);
-        }
-
-        @Override
-        public String getDisplayName() {
-            return compiler.getClass().getName();
+    @Override
+    public WorkResult execute(final T spec) {
+        final DaemonForkOptions daemonForkOptions = toDaemonOptions(spec);
+        workerExecutor.submit(CompilerWorkerRunnable.class, new Action<WorkerConfiguration>() {
+            @Override
+            public void execute(WorkerConfiguration config) {
+                config.setForkMode(getForkMode());
+                config.forkOptions(new Action<JavaForkOptions>() {
+                    @Override
+                    public void execute(JavaForkOptions forkOptions) {
+                        forkOptions.setJvmArgs(daemonForkOptions.getJvmArgs());
+                        forkOptions.setMinHeapSize(daemonForkOptions.getMinHeapSize());
+                        forkOptions.setMaxHeapSize(daemonForkOptions.getMaxHeapSize());
+                    }
+                });
+                config.setClasspath(daemonForkOptions.getClasspath());
+                config.setParams((Serializable) delegate, spec);
+                config.setStrictClasspath(true);
+                ((WorkerConfigurationInternal) config).setSharedPackages(daemonForkOptions.getSharedPackages());
+            }
+        });
+        try {
+            workerExecutor.await();
+            return new DefaultWorkResult(true, null);
+        } catch (Exception ex) {
+            throw UncheckedException.throwAsUncheckedException(ex);
         }
     }
 
-    // TODO Come up with a better way to set up the worker implementation classpath
-    // This is a hack to get the appropriate classpath on the worker implementation classpath for compiler daemons.
-    // The classpath is derived from the implementation class and when this is WorkerDaemonServer, we get the classpath
-    // from the classloader in the Gradle Core API classloader scope (which only contains certain jars).  Using this
-    // class causes the classpath to be inferred from the Gradle API scope classloader instead so that we get the necessary
-    // jars for a compiler daemon.
-    public static class CompilerDaemonServer extends WorkerDaemonServer {
+    @VisibleForTesting
+    public Compiler<T> getDelegate() {
+        return delegate;
+    }
+
+    public static class CompilerWorkerRunnable<T extends CompileSpec> implements Runnable {
+        private final Compiler<T> compiler;
+        private final T compileSpec;
+
+        public CompilerWorkerRunnable(Compiler<T> compiler, T compileSpec) {
+            this.compiler = compiler;
+            this.compileSpec = compileSpec;
+        }
+
         @Override
-        public <T extends WorkSpec> DefaultWorkResult execute(WorkerAction<T> action, T spec) {
-            return super.execute(action, spec);
+        public void run() {
+            compiler.execute(compileSpec);
         }
     }
 }
