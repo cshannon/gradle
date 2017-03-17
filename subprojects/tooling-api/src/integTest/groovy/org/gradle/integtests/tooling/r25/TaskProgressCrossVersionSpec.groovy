@@ -205,16 +205,23 @@ class TaskProgressCrossVersionSpec extends ToolingApiSpecification {
     }
 
     @ToolingApiVersion(">=2.5")
-    @TargetGradleVersion(">=2.5")
+    @TargetGradleVersion(">=3.6")
     def "receive task progress events when tasks are executed in parallel"() {
         given:
         if (!targetDist.toolingApiEventsInEmbeddedModeSupported) {
             toolingApi.requireDaemons()
         }
         buildFile << """
-            @ParallelizableTask
+            import org.gradle.workers.WorkerExecutor
+            
+            class SleepRunnable implements Runnable {
+                public void run() {
+                    Thread.sleep(1000)
+                }
+            }
+            
             class ParTask extends DefaultTask {
-                @TaskAction zzz() { Thread.sleep(1000) }
+                @TaskAction zzz() { services.get(WorkerExecutor.class).submit(SleepRunnable) { it.displayName = "Sleep \$path" } }
             }
 
             task para1(type:ParTask)
@@ -226,14 +233,14 @@ class TaskProgressCrossVersionSpec extends ToolingApiSpecification {
         def events = new ProgressEvents()
         withConnection {
             ProjectConnection connection ->
-                connection.newBuild().withArguments("-Dorg.gradle.parallel.intra=true", '--parallel', '--max-workers=2').forTasks('parallelSleep').addProgressListener(events).run()
+                connection.newBuild().withArguments('--parallel', '--max-workers=2').forTasks('parallelSleep').addProgressListener(events).run()
         }
 
         then:
         events.tasks.size() == 3
 
         def runTasks = events.operation("Run tasks")
-
+        
         def t1 = events.operation("Task :para1")
         def t2 = events.operation("Task :para2")
         def t3 = events.operation("Task :parallelSleep")

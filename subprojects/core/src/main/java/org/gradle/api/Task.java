@@ -136,8 +136,6 @@ import java.util.Set;
  * By default, tasks are not executed in parallel.
  * Parallel execution can be enabled by the <code>--parallel</code> flag when the build is initiated.
  * In parallel mode, the tasks of different projects (i.e. in a multi project build) are able to be executed in parallel.
- * If a task is annotated with {@link org.gradle.api.tasks.ParallelizableTask}, it may also be executed in parallel with other tasks of the same project.
- * See {@link org.gradle.api.tasks.ParallelizableTask} for more details on writing parallelizable tasks.
  */
 public interface Task extends Comparable<Task>, ExtensionAware {
     String TASK_NAME = "name";
