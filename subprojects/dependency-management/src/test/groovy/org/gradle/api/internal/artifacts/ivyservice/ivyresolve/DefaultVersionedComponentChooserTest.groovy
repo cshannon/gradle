@@ -42,8 +42,9 @@ class DefaultVersionedComponentChooserTest extends Specification {
     def versionSelectorScheme = new DefaultVersionSelectorScheme(new DefaultVersionComparator())
     def versionComparator = new DefaultVersionComparator()
     def componentSelectionRules = Mock(ComponentSelectionRulesInternal)
+    def searchForMostRecentChangingModules = false
 
-    def chooser = new DefaultVersionedComponentChooser(versionComparator, versionSelectorScheme, componentSelectionRules)
+    def chooser = new DefaultVersionedComponentChooser(versionComparator, versionSelectorScheme, componentSelectionRules, searchForMostRecentChangingModules)
 
     def "chooses latest version for component meta data"() {
         def one = Stub(ComponentResolveMetadata) {

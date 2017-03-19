@@ -15,6 +15,10 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.ivyresolve;
 
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
 import org.gradle.api.artifacts.ComponentMetadata;
 import org.gradle.api.artifacts.ComponentSelection;
 import org.gradle.api.artifacts.ModuleVersionSelector;
@@ -31,22 +35,21 @@ import org.gradle.internal.resolve.result.BuildableModuleComponentMetaDataResolv
 import org.gradle.internal.rules.SpecRuleAction;
 import org.gradle.util.CollectionUtils;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
-
 class DefaultVersionedComponentChooser implements VersionedComponentChooser {
     private final ComponentSelectionRulesProcessor rulesProcessor = new ComponentSelectionRulesProcessor();
     private final VersionSelectorScheme versionSelectorScheme;
     private final VersionComparator versionComparator;
     private final ComponentSelectionRulesInternal componentSelectionRules;
+    private final boolean searchForMostRecentChangingModules;
 
-    DefaultVersionedComponentChooser(VersionComparator versionComparator, VersionSelectorScheme versionSelectorScheme, ComponentSelectionRulesInternal componentSelectionRules) {
+    DefaultVersionedComponentChooser(VersionComparator versionComparator, VersionSelectorScheme versionSelectorScheme, ComponentSelectionRulesInternal componentSelectionRules, boolean searchForMostRecentChangingModules) {
         this.versionComparator = versionComparator;
         this.versionSelectorScheme = versionSelectorScheme;
         this.componentSelectionRules = componentSelectionRules;
+        this.searchForMostRecentChangingModules = searchForMostRecentChangingModules;
     }
 
+    @Override
     public ComponentResolveMetadata selectNewestComponent(ComponentResolveMetadata one, ComponentResolveMetadata two) {
         if (one == null || two == null) {
             return two == null ? one : two;
@@ -68,6 +71,7 @@ class DefaultVersionedComponentChooser implements VersionedComponentChooser {
         return componentResolveMetadata.isGenerated();
     }
 
+    @Override
     public void selectNewestMatchingComponent(Collection<? extends ModuleComponentResolveState> versions, BuildableComponentSelectionResult result, ModuleVersionSelector requested) {
         VersionSelector requestedVersion = versionSelectorScheme.parseSelector(requested.getVersion());
         Collection<SpecRuleAction<? super ComponentSelection>> rules = componentSelectionRules.getRules();
@@ -138,8 +142,14 @@ class DefaultVersionedComponentChooser implements VersionedComponentChooser {
         }
     }
 
+    @Override
     public boolean isRejectedComponent(ModuleComponentIdentifier candidateIdentifier, MetadataProvider metadataProvider) {
         return isRejectedByRules(candidateIdentifier, componentSelectionRules.getRules(), metadataProvider);
+    }
+
+    @Override
+    public boolean isSearchForMostRecentChangingModules() {
+        return searchForMostRecentChangingModules;
     }
 
     private boolean isRejectedByRules(ModuleComponentIdentifier candidateIdentifier, Collection<SpecRuleAction<? super ComponentSelection>> rules, MetadataProvider metadataProvider) {

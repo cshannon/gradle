@@ -1,5 +1,5 @@
 /*
- * Copyright 2012 the original author or authors.
+ * Copyright 2017 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -13,7 +13,6 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-
 package org.gradle.api.internal.artifacts.repositories.resolver;
 
 import java.io.File;
@@ -23,22 +22,15 @@ import java.net.URI;
 import org.gradle.api.resources.MissingResourceException;
 import org.gradle.api.resources.ResourceException;
 import org.gradle.internal.resource.ExternalResource;
-import org.gradle.internal.resource.local.FileStore;
-import org.gradle.internal.resource.local.LocallyAvailableResource;
-import org.gradle.internal.resource.transfer.CacheAwareExternalResourceAccessor;
+import org.gradle.internal.resource.local.DefaultLocallyAvailableExternalResource;
+import org.gradle.internal.resource.local.DefaultLocallyAvailableResource;
 
-import com.google.common.base.Charsets;
-import com.google.common.hash.Hashing;
-
-class MavenMetadataLoader extends AbstractMavenMetadataLoader {
-    private final CacheAwareExternalResourceAccessor cacheAwareExternalResourceAccessor;
-    private final FileStore<String> resourcesFileStore;
-
-    public MavenMetadataLoader(CacheAwareExternalResourceAccessor cacheAwareExternalResourceAccessor, FileStore<String> resourcesFileStore) {
-        this.cacheAwareExternalResourceAccessor = cacheAwareExternalResourceAccessor;
-        this.resourcesFileStore = resourcesFileStore;
-    }
-
+/**
+ * Read the Maven metadata from the maven-metadata-snapshots.xml file
+ *
+ */
+class MavenMetadataSnapshotsLoader extends AbstractMavenMetadataLoader {
+    
     public MavenMetadata load(URI metadataLocation) throws ResourceException {
         MavenMetadata metadata = new MavenMetadata();
         try {
@@ -52,16 +44,7 @@ class MavenMetadataLoader extends AbstractMavenMetadataLoader {
     }
 
     private void parseMavenMetadataInfo(final URI metadataLocation, final MavenMetadata metadata) throws IOException {
-        ExternalResource resource = cacheAwareExternalResourceAccessor.getResource(metadataLocation, new CacheAwareExternalResourceAccessor.ResourceFileStore() {
-            @Override
-            public LocallyAvailableResource moveIntoCache(File downloadedResource) {
-                String key = Hashing.sha1().hashString(metadataLocation.toString(), Charsets.UTF_8).toString();
-                return resourcesFileStore.move(key, downloadedResource);
-            }
-        }, null);
-        if (resource == null) {
-            throw new MissingResourceException(metadataLocation, String.format("Maven meta-data not available: %s", metadataLocation));
-        }
+        ExternalResource resource = new DefaultLocallyAvailableExternalResource(metadataLocation, new DefaultLocallyAvailableResource(new File(metadataLocation)));
         try {
             parseMavenMetadataInto(resource, metadata);
         } finally {

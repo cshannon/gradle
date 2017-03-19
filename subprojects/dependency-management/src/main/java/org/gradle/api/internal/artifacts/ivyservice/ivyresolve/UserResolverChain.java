@@ -32,23 +32,26 @@ public class UserResolverChain implements ComponentResolvers {
     private final RepositoryChainArtifactResolver artifactResolver;
     private final ComponentSelectionRulesInternal componentSelectionRules;
 
-    public UserResolverChain(VersionSelectorScheme versionSelectorScheme, VersionComparator versionComparator, ComponentSelectionRulesInternal componentSelectionRules, ImmutableModuleIdentifierFactory moduleIdentifierFactory) {
+    public UserResolverChain(VersionSelectorScheme versionSelectorScheme, VersionComparator versionComparator, ComponentSelectionRulesInternal componentSelectionRules, ImmutableModuleIdentifierFactory moduleIdentifierFactory, boolean searchForMostRecentChangingModules) {
         this.componentSelectionRules = componentSelectionRules;
-        VersionedComponentChooser componentChooser = new DefaultVersionedComponentChooser(versionComparator, versionSelectorScheme, componentSelectionRules);
+        VersionedComponentChooser componentChooser = new DefaultVersionedComponentChooser(versionComparator, versionSelectorScheme, componentSelectionRules, searchForMostRecentChangingModules);
         ModuleTransformer metaDataFactory = new ModuleTransformer();
         componentIdResolver = new RepositoryChainDependencyToComponentIdResolver(versionSelectorScheme, componentChooser, metaDataFactory, moduleIdentifierFactory);
         componentResolver = new RepositoryChainComponentMetaDataResolver(componentChooser, metaDataFactory);
         artifactResolver = new RepositoryChainArtifactResolver();
     }
 
+    @Override
     public DependencyToComponentIdResolver getComponentIdResolver() {
         return componentIdResolver;
     }
 
+    @Override
     public ComponentMetaDataResolver getComponentResolver() {
         return componentResolver;
     }
 
+    @Override
     public ArtifactResolver getArtifactResolver() {
         return artifactResolver;
     }
@@ -64,6 +67,7 @@ public class UserResolverChain implements ComponentResolvers {
     }
 
     private static class ModuleTransformer implements Transformer<ModuleComponentResolveMetadata, RepositoryChainModuleResolution> {
+        @Override
         public ModuleComponentResolveMetadata transform(RepositoryChainModuleResolution original) {
             RepositoryChainModuleSource moduleSource = new RepositoryChainModuleSource(original.repository.getId(), original.module.getSource());
             return original.module.withSource(moduleSource);

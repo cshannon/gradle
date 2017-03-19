@@ -15,12 +15,12 @@
  */
 package org.gradle.api.internal.artifacts.ivyservice.ivyresolve;
 
+import java.util.Collection;
+
 import org.gradle.api.artifacts.ModuleVersionSelector;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.internal.component.model.ComponentResolveMetadata;
 import org.gradle.internal.resolve.result.BuildableComponentSelectionResult;
-
-import java.util.Collection;
 
 public interface VersionedComponentChooser {
     ComponentResolveMetadata selectNewestComponent(ComponentResolveMetadata one, ComponentResolveMetadata two);
@@ -28,4 +28,6 @@ public interface VersionedComponentChooser {
     void selectNewestMatchingComponent(Collection<? extends ModuleComponentResolveState> versions, BuildableComponentSelectionResult result, ModuleVersionSelector requested);
 
     boolean isRejectedComponent(ModuleComponentIdentifier candidateIdentifier, MetadataProvider metadataProvider);
+    
+    boolean isSearchForMostRecentChangingModules();
 }

@@ -16,11 +16,11 @@
 
 package org.gradle.api.artifacts;
 
-import org.gradle.api.Action;
-import org.gradle.api.Incubating;
-
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
+
+import org.gradle.api.Action;
+import org.gradle.api.Incubating;
 
 /**
  * Defines the strategies around dependency resolution.
@@ -232,6 +232,13 @@ public interface ResolutionStrategy {
      * @since 1.0-milestone-6
      */
     void cacheChangingModulesFor(int value, TimeUnit units);
+    
+    /**
+     * Search across all repositories for changing modules and use the most recent found.
+     * 
+     * @param search
+     */
+    void searchForMostRecentChangingModules(boolean search);
 
     /**
      * Returns the currently configured version selection rules object.

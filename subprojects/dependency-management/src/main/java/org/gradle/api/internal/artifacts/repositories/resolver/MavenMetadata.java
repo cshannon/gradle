@@ -16,11 +16,26 @@
 
 package org.gradle.api.internal.artifacts.repositories.resolver;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
-class MavenMetadata {
+public class MavenMetadata {
+    private static final SimpleDateFormat SNAPSHOT_FORMAT = new SimpleDateFormat("yyyyMMdd.HHmmss");
+    private static final SimpleDateFormat LOCAL_FORMAT = new SimpleDateFormat("yyyyMMddHHmmss");
+    
     String timestamp;
     String buildNumber;
     List<String> versions = new ArrayList<String>();
+
+    public static Date parseTimestamp(final String timestamp) throws ParseException {
+        if (timestamp != null) {
+            SimpleDateFormat parser = timestamp.contains(".") ? SNAPSHOT_FORMAT : LOCAL_FORMAT;
+            Date date = parser.parse(timestamp);
+            return date;
+        }
+        return null;
+    }
 }

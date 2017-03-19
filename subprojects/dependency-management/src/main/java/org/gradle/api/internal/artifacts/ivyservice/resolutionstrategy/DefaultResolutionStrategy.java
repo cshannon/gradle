@@ -16,6 +16,15 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.resolutionstrategy;
 
+import static org.gradle.api.internal.artifacts.configurations.MutationValidator.MutationType.STRATEGY;
+import static org.gradle.util.GUtil.flattenElements;
+
+import java.util.Collection;
+import java.util.Collections;
+import java.util.LinkedHashSet;
+import java.util.Set;
+import java.util.concurrent.TimeUnit;
+
 import org.gradle.api.Action;
 import org.gradle.api.artifacts.ComponentSelection;
 import org.gradle.api.artifacts.ComponentSelectionRules;
@@ -40,15 +49,6 @@ import org.gradle.internal.rules.SpecRuleAction;
 import org.gradle.internal.typeconversion.NormalizedTimeUnit;
 import org.gradle.internal.typeconversion.TimeUnitsParser;
 
-import java.util.Collection;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
-
-import static org.gradle.api.internal.artifacts.configurations.MutationValidator.MutationType.STRATEGY;
-import static org.gradle.util.GUtil.flattenElements;
-
 public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
     private final Set<ModuleVersionSelector> forcedModules = new LinkedHashSet<ModuleVersionSelector>();
     private ConflictResolution conflictResolution = new LatestConflictResolution();
@@ -60,6 +60,7 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
     private MutationValidator mutationValidator = MutationValidator.IGNORE;
 
+    private boolean searchForMostRecentChangingModules;
     private boolean assumeFluidDependencies;
     private SortOrder sortOrder = SortOrder.DEFAULT;
     private static final String ASSUME_FLUID_DEPENDENCIES = "org.gradle.resolution.assumeFluidDependencies";
@@ -87,16 +88,19 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
         dependencySubstitutions.setMutationValidator(validator);
     }
 
+    @Override
     public Set<ModuleVersionSelector> getForcedModules() {
         return Collections.unmodifiableSet(forcedModules);
     }
 
+    @Override
     public ResolutionStrategy failOnVersionConflict() {
         mutationValidator.validateMutation(STRATEGY);
         this.conflictResolution = new StrictConflictResolution();
         return this;
     }
 
+    @Override
     public void preferProjectModules() {
         if (this.conflictResolution instanceof LatestConflictResolution) {
             this.conflictResolution = new PreferProjectModulesConflictResolution();
@@ -113,14 +117,17 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
         return sortOrder;
     }
 
+    @Override
     public ConflictResolution getConflictResolution() {
         return this.conflictResolution;
     }
 
+    @Override
     public ResolutionRules getResolutionRules() {
         return cachePolicy;
     }
 
+    @Override
     public DefaultResolutionStrategy force(Object... moduleVersionSelectorNotations) {
         mutationValidator.validateMutation(STRATEGY);
         Set<ModuleVersionSelector> modules = ModuleVersionSelectorParsers.multiParser().parseNotation(moduleVersionSelectorNotations);
@@ -128,12 +135,14 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
         return this;
     }
 
+    @Override
     public ResolutionStrategy eachDependency(Action<? super DependencyResolveDetails> rule) {
         mutationValidator.validateMutation(STRATEGY);
         dependencySubstitutions.allWithDependencyResolveDetails(rule);
         return this;
     }
 
+    @Override
     public Action<DependencySubstitution> getDependencySubstitutionRule() {
         Collection<Action<DependencySubstitution>> allRules = flattenElements(
                 new ModuleForcingResolveRule(forcedModules, moduleIdentifierFactory),
@@ -142,15 +151,28 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
         return Actions.composite(allRules);
     }
 
+    @Override
     public void assumeFluidDependencies() {
         assumeFluidDependencies = true;
     }
 
+    @Override
+    public boolean isSearchForMostRecentChangingModules() {
+        return searchForMostRecentChangingModules;
+    }
+
+    @Override
+    public void searchForMostRecentChangingModules(boolean searchForMostRecentChangingModules) {
+        this.searchForMostRecentChangingModules = searchForMostRecentChangingModules;
+    }
+
+    @Override
     public boolean resolveGraphToDetermineTaskDependencies() {
         return assumeFluidDependencies || dependencySubstitutions.hasRules() || globalDependencySubstitutionRules.hasRules();
     }
 
 
+    @Override
     public DefaultResolutionStrategy setForcedModules(Object ... moduleVersionSelectorNotations) {
         mutationValidator.validateMutation(STRATEGY);
         Set<ModuleVersionSelector> modules = ModuleVersionSelectorParsers.multiParser().parseNotation(moduleVersionSelectorNotations);
@@ -159,46 +181,56 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
         return this;
     }
 
+    @Override
     public DefaultCachePolicy getCachePolicy() {
         return cachePolicy;
     }
 
+    @Override
     public void cacheDynamicVersionsFor(int value, String units) {
         NormalizedTimeUnit timeUnit = new TimeUnitsParser().parseNotation(units, value);
         cacheDynamicVersionsFor(timeUnit.getValue(), timeUnit.getTimeUnit());
     }
 
+    @Override
     public void cacheDynamicVersionsFor(int value, TimeUnit units) {
         this.cachePolicy.cacheDynamicVersionsFor(value, units);
     }
 
+    @Override
     public void cacheChangingModulesFor(int value, String units) {
         NormalizedTimeUnit timeUnit = new TimeUnitsParser().parseNotation(units, value);
         cacheChangingModulesFor(timeUnit.getValue(), timeUnit.getTimeUnit());
     }
 
+    @Override
     public void cacheChangingModulesFor(int value, TimeUnit units) {
         this.cachePolicy.cacheChangingModulesFor(value, units);
     }
 
+    @Override
     public ComponentSelectionRulesInternal getComponentSelection() {
         return componentSelectionRules;
     }
 
+    @Override
     public ResolutionStrategy componentSelection(Action<? super ComponentSelectionRules> action) {
         action.execute(componentSelectionRules);
         return this;
     }
 
+    @Override
     public DependencySubstitutionsInternal getDependencySubstitution() {
         return dependencySubstitutions;
     }
 
+    @Override
     public ResolutionStrategy dependencySubstitution(Action<? super DependencySubstitutions> action) {
         action.execute(dependencySubstitutions);
         return this;
     }
 
+    @Override
     public DefaultResolutionStrategy copy() {
         DefaultResolutionStrategy out = new DefaultResolutionStrategy(cachePolicy.copy(), dependencySubstitutions.copy(), globalDependencySubstitutionRules, moduleIdentifierFactory);
 
