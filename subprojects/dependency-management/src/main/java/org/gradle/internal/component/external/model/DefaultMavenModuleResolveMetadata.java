@@ -28,12 +28,14 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
     private final String packaging;
     private final boolean relocated;
     private final String snapshotTimestamp;
+//    private final Long lastModified;
 
     DefaultMavenModuleResolveMetadata(MutableMavenModuleResolveMetadata metadata) {
         super(metadata);
         packaging = metadata.getPackaging();
         relocated = metadata.isRelocated();
         snapshotTimestamp = metadata.getSnapshotTimestamp();
+//        this.lastModified = metadata.getLastModified();
     }
 
     private DefaultMavenModuleResolveMetadata(DefaultMavenModuleResolveMetadata metadata, ModuleSource source) {
@@ -41,6 +43,7 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
         packaging = metadata.getPackaging();
         relocated = metadata.isRelocated();
         snapshotTimestamp = metadata.getSnapshotTimestamp();
+//        this.lastModified = metadata.getLastModified();
     }
 
     @Override
@@ -73,4 +76,8 @@ public class DefaultMavenModuleResolveMetadata extends AbstractModuleComponentRe
     public String getSnapshotTimestamp() {
         return snapshotTimestamp;
     }
+//
+//	public Long getLastModified() {
+//		return lastModified;
+//	}
 }

@@ -34,4 +34,7 @@ public interface MutableMavenModuleResolveMetadata extends MutableModuleComponen
     boolean isPomPackaging();
     boolean isKnownJarPackaging();
     boolean isRelocated();
+    
+//    Long getLastModified();
+//    void setLastModified(Long lastModified);
 }

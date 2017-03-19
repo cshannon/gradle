@@ -36,7 +36,8 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
     private String packaging;
     private boolean relocated;
     private String snapshotTimestamp;
-
+    //private Long lastModified;
+    
     /**
      * Creates default metadata given a set of artifacts.
      */
@@ -77,7 +78,15 @@ public class DefaultMutableMavenModuleResolveMetadata extends AbstractMutableMod
         this.snapshotTimestamp = snapshotTimestamp;
     }
 
-    @Override
+//	public Long getLastModified() {
+//		return lastModified;
+//	}
+//
+//	public void setLastModified(Long lastModified) {
+//		this.lastModified = lastModified;
+//	}
+
+	@Override
     public boolean isRelocated() {
         return relocated;
     }

@@ -16,9 +16,18 @@
 
 package org.gradle.api.internal.artifacts.ivyservice.ivyresolve;
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Date;
+import java.util.LinkedList;
+import java.util.List;
+
 import org.gradle.api.Transformer;
 import org.gradle.api.artifacts.component.ComponentIdentifier;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
+import org.gradle.internal.component.external.model.MavenModuleResolveMetadata;
 import org.gradle.internal.component.external.model.ModuleComponentResolveMetadata;
 import org.gradle.internal.component.model.ComponentOverrideMetadata;
 import org.gradle.internal.resolve.ModuleVersionResolveException;
@@ -27,11 +36,6 @@ import org.gradle.internal.resolve.result.BuildableComponentResolveResult;
 import org.gradle.internal.resolve.result.BuildableModuleComponentMetaDataResolveResult;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
 
 public class RepositoryChainComponentMetaDataResolver implements ComponentMetaDataResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(RepositoryChainComponentMetaDataResolver.class);
@@ -127,13 +131,57 @@ public class RepositoryChainComponentMetaDataResolver implements ComponentMetaDa
                     if (request.canMakeFurtherAttempts()) {
                         missing.add(request);
                     }
+                    LOGGER.warn("\nModule {} is missing", request.componentIdentifier);
                     break;
                 case Resolved:
                     RepositoryChainModuleResolution moduleResolution = new RepositoryChainModuleResolution(request.repository, metaDataResolveResult.getMetaData());
-                    if (!metaDataResolveResult.getMetaData().isGenerated()) {
+                    LOGGER.warn("\nModule {} changing status {}", moduleResolution.module.getComponentId(), moduleResolution.module.isChanging());
+                    boolean search = versionedComponentChooser.isSearchForLatestChangingModules();
+                    if ((!search || !moduleResolution.module.isChanging()) && !metaDataResolveResult.getMetaData().isGenerated()) {
                         return moduleResolution;
                     }
                     best = best != null ? best : moduleResolution;
+                    if (search && moduleResolution.module.isChanging()) {
+               		 LOGGER.warn("Type best {}", best.module.getClass());
+               		 LOGGER.warn("Type Timestampmodule {}", moduleResolution.module.getClass());
+                    	if (best.module instanceof MavenModuleResolveMetadata && moduleResolution.module instanceof MavenModuleResolveMetadata) {
+                    		MavenModuleResolveMetadata bestMaven = (MavenModuleResolveMetadata) best.module;
+                    		MavenModuleResolveMetadata mrMaven = (MavenModuleResolveMetadata) moduleResolution.module;
+                    		
+                    		 String bestTimestamp = bestMaven.getSnapshotTimestamp();
+                    		 String moduleTimestamp = mrMaven.getSnapshotTimestamp();
+                    		 
+                    		 Date bestDate;
+                    		 Date moduleDate;
+                    		 
+  
+                    		 bestDate = bestTimestamp.contains(".") ? parseSnapshotDate(bestTimestamp) : parseLocalDate(bestTimestamp);
+                    		 moduleDate = moduleTimestamp.contains(".") ? parseSnapshotDate(moduleTimestamp) : parseLocalDate(moduleTimestamp);
+                    		 
+                    		 LOGGER.warn("Timestamp best {}", bestDate);
+                    		 LOGGER.warn("Timestamp module {}", moduleDate);
+                    		 
+                    		 best = bestDate.after(moduleDate) ? best : moduleResolution;
+                    		 
+                    		 LOGGER.warn("Using repository {}", best.repository.getName());
+//                    		
+//                    		 if (bestMaven.getLastModified() != null) {
+//                    			 LOGGER.warn("best mod date {}", new Date(bestMaven.getLastModified()));
+//                    		 } else {
+//                    			 LOGGER.warn("best mod date {}", bestMaven.getLastModified());
+//                    		 }
+//                    		 if (mrMaven.getLastModified() != null) {
+//                    			 LOGGER.warn("module mod date {}", new Date(mrMaven.getLastModified()));
+//                    		 } else {
+//                    			 LOGGER.warn("module mod date {}", mrMaven.getLastModified()); 
+//                    		 }
+                    		 
+//                    		 
+//                    		 LOGGER.warn("best repo {}", best.repository.getClass());
+//                    		 LOGGER.warn("module repo {}", moduleResolution.repository.getClass());
+                    		
+                    	}
+                    }
                     break;
                 default:
                     throw new IllegalStateException("Unexpected state for resolution: " + metaDataResolveResult.getState());
@@ -141,5 +189,28 @@ public class RepositoryChainComponentMetaDataResolver implements ComponentMetaDa
         }
 
         return best;
+    }
+    
+
+    private Date parseSnapshotDate(String timestamp) {
+        SimpleDateFormat parser = new SimpleDateFormat("yyyyMMdd.HHmmss");
+        try {
+			Date date = parser.parse(timestamp);
+			return date;
+		} catch (ParseException e) {
+			LOGGER.error(e.getMessage(), e);
+		}
+        return null;
+    }
+    
+    private Date parseLocalDate(String timestamp) {
+        SimpleDateFormat parser = new SimpleDateFormat("yyyyMMddHHmmss");
+        try {
+			Date date = parser.parse(timestamp);
+			return date;
+		} catch (ParseException e) {
+			LOGGER.error(e.getMessage(), e);
+		}
+        return null;
     }
 }

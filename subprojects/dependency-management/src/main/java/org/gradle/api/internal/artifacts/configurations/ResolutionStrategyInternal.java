@@ -60,6 +60,8 @@ public interface ResolutionStrategyInternal extends ResolutionStrategy {
      * If not, we do a shallow 'resolve' of SelfResolvingDependencies only.
      */
     boolean resolveGraphToDetermineTaskDependencies();
+    
+    boolean isSearchForLatestChangingModules();
 
     SortOrder getSortOrder();
 

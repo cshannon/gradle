@@ -18,6 +18,7 @@ package org.gradle.api.internal.artifacts.repositories.resolver;
 import org.gradle.api.Nullable;
 import org.gradle.api.artifacts.component.ModuleComponentIdentifier;
 import org.gradle.api.internal.artifacts.ImmutableModuleIdentifierFactory;
+import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.DescriptorParseContext;
 import org.gradle.api.internal.artifacts.ivyservice.ivyresolve.parser.MetaDataParser;
 import org.gradle.api.internal.artifacts.repositories.transport.RepositoryTransport;
 import org.gradle.internal.component.external.model.ModuleComponentArtifactIdentifier;
@@ -25,16 +26,24 @@ import org.gradle.internal.component.external.model.ModuleComponentArtifactMetad
 import org.gradle.internal.component.external.model.MutableMavenModuleResolveMetadata;
 import org.gradle.internal.resolve.result.DefaultResourceAwareResolveResult;
 import org.gradle.internal.resolve.result.ResourceAwareResolveResult;
+import org.gradle.internal.resource.ExternalResourceName;
 import org.gradle.internal.resource.local.FileStore;
+import org.gradle.internal.resource.local.LocallyAvailableExternalResource;
 import org.gradle.internal.resource.local.LocallyAvailableResourceFinder;
 import org.gradle.internal.resource.transfer.CacheAwareExternalResourceAccessor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.net.URI;
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 
 public class MavenLocalResolver extends MavenResolver {
     private static final Logger LOGGER = LoggerFactory.getLogger(MavenResolver.class);
+    
+    private final MavenMetadataLocalLoader mavenMetaDataLoader = new MavenMetadataLocalLoader();
+    private final MavenMetadataSnapshotsLoader mavenMetaDataSnapshotsLoader = new MavenMetadataSnapshotsLoader();
 
     public MavenLocalResolver(String name, URI rootUri, RepositoryTransport transport,
                               LocallyAvailableResourceFinder<ModuleComponentArtifactMetadata> locallyAvailableResourceFinder,
@@ -59,7 +68,72 @@ public class MavenLocalResolver extends MavenResolver {
         return metadata;
     }
 
-    private boolean isOrphanedPom(MutableMavenModuleResolveMetadata metaData, ExternalResourceArtifactResolver artifactResolver) {
+    @Override
+	protected MutableMavenModuleResolveMetadata parseMetaDataFromResource(
+			ModuleComponentIdentifier moduleComponentIdentifier, LocallyAvailableExternalResource cachedResource,
+			DescriptorParseContext context) {
+
+    
+    	MutableMavenModuleResolveMetadata metaData = super.parseMetaDataFromResource(moduleComponentIdentifier, cachedResource, context);
+    	
+    	if (metaData.isChanging() && metaData.getSnapshotTimestamp() == null) {
+	    	ExternalResourceName localMetadataLocation = getWholePattern().toModuleVersionPath(moduleComponentIdentifier).resolve("maven-metadata-local.xml");
+	    	ExternalResourceName localSnapshotMetadataLocation = getWholePattern().toModuleVersionPath(moduleComponentIdentifier).resolve("maven-metadata-snapshots.xml");
+	    	MavenMetadataLocal mavenMetadataLocal = null;
+	    	MavenMetadataSnapshots mavenMetadataSnapshots = null;
+	    	try {
+	    		mavenMetadataLocal = mavenMetaDataLoader.load(localMetadataLocation.getUri());	    	
+	        } catch (Exception e) {
+	        	LOGGER.error(e.getMessage(), e);
+	        }
+	    	try {
+	    		mavenMetadataSnapshots = mavenMetaDataSnapshotsLoader.load(localSnapshotMetadataLocation.getUri());	    	
+	        } catch (Exception e) {
+	        	LOGGER.error(e.getMessage(), e);
+	        }
+	    	
+	    	if (mavenMetadataLocal == null && mavenMetadataSnapshots != null) {
+	    		metaData.setSnapshotTimestamp(mavenMetadataSnapshots.timestamp);
+	    	} else if (mavenMetadataLocal != null && mavenMetadataSnapshots == null) {
+	    		metaData.setSnapshotTimestamp(mavenMetadataLocal.timestamp);
+	    	} else {
+	    		Date localDate = parseLocalDate(mavenMetadataLocal.timestamp);
+	    		Date snapshotDate = parseSnapshotDate(mavenMetadataSnapshots.timestamp);
+	    		if (localDate.after(snapshotDate)) {
+	    			metaData.setSnapshotTimestamp(mavenMetadataLocal.timestamp);
+	    		} else {
+	    			metaData.setSnapshotTimestamp(mavenMetadataSnapshots.timestamp);
+	    		}
+	    	}
+	    	//metaData.setLastModified(mavenMetadata.lastUpdated);
+    	}
+    	
+    	return metaData;
+	}
+
+    private Date parseSnapshotDate(String timestamp) {
+        SimpleDateFormat parser = new SimpleDateFormat("yyyyMMdd.HHmmss");
+        try {
+			Date date = parser.parse(timestamp);
+			return date;
+		} catch (ParseException e) {
+			LOGGER.error(e.getMessage(), e);
+		}
+        return null;
+    }
+    
+    private Date parseLocalDate(String timestamp) {
+        SimpleDateFormat parser = new SimpleDateFormat("yyyyMMddHHmmss");
+        try {
+			Date date = parser.parse(timestamp);
+			return date;
+		} catch (ParseException e) {
+			LOGGER.error(e.getMessage(), e);
+		}
+        return null;
+    }
+
+	private boolean isOrphanedPom(MutableMavenModuleResolveMetadata metaData, ExternalResourceArtifactResolver artifactResolver) {
         if (metaData.isPomPackaging()) {
             return false;
         }

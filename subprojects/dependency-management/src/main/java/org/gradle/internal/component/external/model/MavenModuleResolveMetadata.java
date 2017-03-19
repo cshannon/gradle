@@ -39,4 +39,5 @@ public interface MavenModuleResolveMetadata extends ModuleComponentResolveMetada
     boolean isPomPackaging();
     boolean isKnownJarPackaging();
     String getSnapshotTimestamp();
+//    Long getLastModified();
 }

@@ -28,4 +28,6 @@ public interface VersionedComponentChooser {
     void selectNewestMatchingComponent(Collection<? extends ModuleComponentResolveState> versions, BuildableComponentSelectionResult result, ModuleVersionSelector requested);
 
     boolean isRejectedComponent(ModuleComponentIdentifier candidateIdentifier, MetadataProvider metadataProvider);
+    
+    boolean isSearchForLatestChangingModules();
 }

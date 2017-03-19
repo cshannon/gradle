@@ -60,6 +60,7 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
     private final ImmutableModuleIdentifierFactory moduleIdentifierFactory;
     private MutationValidator mutationValidator = MutationValidator.IGNORE;
 
+    private boolean searchForLatestChangingModules;
     private boolean assumeFluidDependencies;
     private SortOrder sortOrder = SortOrder.DEFAULT;
     private static final String ASSUME_FLUID_DEPENDENCIES = "org.gradle.resolution.assumeFluidDependencies";
@@ -121,7 +122,16 @@ public class DefaultResolutionStrategy implements ResolutionStrategyInternal {
         return cachePolicy;
     }
 
-    public DefaultResolutionStrategy force(Object... moduleVersionSelectorNotations) {
+    public boolean isSearchForLatestChangingModules() {
+		return searchForLatestChangingModules;
+	}
+
+    @Override
+	public void searchForLatestChangingModules(boolean searchForLatestChangingModules) {
+		this.searchForLatestChangingModules = searchForLatestChangingModules;
+	}
+
+	public DefaultResolutionStrategy force(Object... moduleVersionSelectorNotations) {
         mutationValidator.validateMutation(STRATEGY);
         Set<ModuleVersionSelector> modules = ModuleVersionSelectorParsers.multiParser().parseNotation(moduleVersionSelectorNotations);
         this.forcedModules.addAll(modules);

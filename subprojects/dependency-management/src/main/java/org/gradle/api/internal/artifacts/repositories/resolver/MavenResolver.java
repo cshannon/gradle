@@ -150,7 +150,7 @@ public class MavenResolver extends ExternalResourceResolver<MavenModuleResolveMe
         updatePatterns();
     }
 
-    private M2ResourcePattern getWholePattern() {
+    protected M2ResourcePattern getWholePattern() {
         return new M2ResourcePattern(root, MavenPattern.M2_PATTERN);
     }
 

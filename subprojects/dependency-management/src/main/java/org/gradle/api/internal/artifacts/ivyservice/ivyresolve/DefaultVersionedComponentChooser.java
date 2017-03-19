@@ -40,11 +40,13 @@ class DefaultVersionedComponentChooser implements VersionedComponentChooser {
     private final VersionSelectorScheme versionSelectorScheme;
     private final VersionComparator versionComparator;
     private final ComponentSelectionRulesInternal componentSelectionRules;
+    private final boolean searchForLatestChangingModules;
 
-    DefaultVersionedComponentChooser(VersionComparator versionComparator, VersionSelectorScheme versionSelectorScheme, ComponentSelectionRulesInternal componentSelectionRules) {
+    DefaultVersionedComponentChooser(VersionComparator versionComparator, VersionSelectorScheme versionSelectorScheme, ComponentSelectionRulesInternal componentSelectionRules, boolean searchForLatestChangingModules) {
         this.versionComparator = versionComparator;
         this.versionSelectorScheme = versionSelectorScheme;
         this.componentSelectionRules = componentSelectionRules;
+        this.searchForLatestChangingModules = searchForLatestChangingModules;
     }
 
     public ComponentResolveMetadata selectNewestComponent(ComponentResolveMetadata one, ComponentResolveMetadata two) {
@@ -64,7 +66,11 @@ class DefaultVersionedComponentChooser implements VersionedComponentChooser {
         return comparison < 0 ? two : one;
     }
 
-    private boolean isGeneratedModuleDescriptor(ComponentResolveMetadata componentResolveMetadata) {
+    public boolean isSearchForLatestChangingModules() {
+		return searchForLatestChangingModules;
+	}
+
+	private boolean isGeneratedModuleDescriptor(ComponentResolveMetadata componentResolveMetadata) {
         return componentResolveMetadata.isGenerated();
     }
 

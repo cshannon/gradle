@@ -232,6 +232,8 @@ public interface ResolutionStrategy {
      * @since 1.0-milestone-6
      */
     void cacheChangingModulesFor(int value, TimeUnit units);
+    
+    void searchForLatestChangingModules(boolean search);
 
     /**
      * Returns the currently configured version selection rules object.
